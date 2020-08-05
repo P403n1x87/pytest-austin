@@ -1,20 +1,11 @@
-import os
-import os.path
-from time import time
-
 from austin import AustinTerminated
-from pytest import hookimpl
-from pytest import Function, Module
+from pytest import Function, hookimpl, Module
 from pytest_austin import PyTestAustin
-
-AUSTIN_DUMP = None
 
 
 def pytest_addoption(parser, pluginmanager) -> None:
     """Add Austin command line options to pytest."""
     group = parser.getgroup("austin", "statistical profiling with Austin")
-
-    parser.addini("austin", "Austin options", "args")
 
     group.addoption(
         "--steal-mojo",
@@ -49,8 +40,9 @@ def pytest_configure(config) -> None:
     """Configure pytest-austin."""
     config.addinivalue_line(
         "markers",
-        "total_time(timedelta): check that the marked test doesn't take more than the "
-        "given time delta to execute.",
+        "total_time(time, function, module, line): check that the marked line "
+        "doesn't take more than the given time delta to execute. If no line is given, "
+        "then the whole function is considered.",
     )
 
     if config.option.steal_mojo:
@@ -78,42 +70,41 @@ def pytest_sessionstart(session) -> None:
     pytest_austin.wait_ready(1)
 
 
+def pytest_runtest_setup(item) -> None:
+    """Register tests and checks with pytest-austin."""
+    pytest_austin = item.config.pluginmanager.getplugin("austin")
+    if not pytest_austin:
+        return
+
+    if pytest_austin.is_running():
+        if isinstance(item, Function) and isinstance(item.parent, Module):
+            function, module = item.name, item.parent.name
+            pytest_austin.register_test(
+                function, module, item.iter_markers("total_time")
+            )
+
+
 @hookimpl(hookwrapper=True)
 def pytest_runtestloop(session):
+    """Run all checks at the end and set the exit status."""
     yield
 
-    session.testsfailed += 1
-
-
-def pytest_runtest_setup(item) -> None:
-    # TODO
-    if isinstance(item, Function) and isinstance(item.parent, Module):
-        function, module = item.name, item.parent.name
-        total_time_markers = list(item.iter_markers("total_time"))
-        if total_time_markers:
-            (marker,) = total_time_markers
-            print(f"{function} ({module}) :: {marker.args[0]}")
-
-
-def pytest_sessionfinish(session, exitstatus) -> None:
-    """Stop Austin if we had mojo."""
-    global AUSTIN_DUMP
-
+    # This runs effectively at the end of the session
     pytest_austin = session.config.pluginmanager.getplugin("austin")
     if not pytest_austin:
         return
 
     if pytest_austin.is_running():
         pytest_austin.terminate(wait=True)
-        try:
-            pytest_austin.join()
-        except AustinTerminated:
-            pass
 
-        filename = f".austin_{int((time() * 1e6) % 1e14)}"
-        with open(filename, "w") as fout:
-            pytest_austin.dump(fout)
-            AUSTIN_DUMP = os.path.join(os.getcwd(), filename)
+    try:
+        pytest_austin.join()
+    except AustinTerminated:
+        pass
+
+    pytest_austin.dump()
+
+    session.testsfailed += pytest_austin.check_tests()
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
@@ -123,23 +114,38 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         return
 
     terminalreporter.write_sep("=", "Austin report")
-
+    terminalreporter.write_line(f"austin {pytest_austin.version}")
     if not pytest_austin.data:
         terminalreporter.write_line("No data collected.")
         return
 
-    if AUSTIN_DUMP is not None:
-        terminalreporter.write_line(f"Collected stats written on {AUSTIN_DUMP}")
+    if pytest_austin.austinfile is not None:
+        terminalreporter.write_line(
+            f"Collected stats written on {pytest_austin.austinfile}\n"
+        )
 
-        for line in pytest_austin.global_stats.splitlines():
-            terminalreporter.write_line(line)
-        if not pytest_austin.global_stats:
+        if pytest_austin.global_stats:
+            terminalreporter.write_line(pytest_austin.global_stats + "\n")
+        else:
             terminalreporter.write_line(
-                f"Austin collected a total of {len(pytest_austin.data)} samples"
+                f"Austin collected a total of {len(pytest_austin.data)} samples\n"
             )
 
     # Report failed Austin conditions
-    failed = True
-    markup = {"red": True, "bold": True} if failed else {"green": True}
-    message = "Some Austin conditions failed."
-    terminalreporter.write_line(message, **markup)
+    if pytest_austin.report:
+        n = len(pytest_austin.report)
+
+        for function, module, args, _, actual, expected, _ in pytest_austin.report:
+            delta = actual - expected
+            perc = delta * 100 / expected
+            message = (
+                f"{module}::{function} Function {args['function']} ({args['module']}) "
+                f"took {int(delta)} μs ({perc:.1f}%) longer than expected ({int(expected)} μs)"
+            )
+            terminalreporter.write_line(message)
+
+        terminalreporter.write_line("")
+        terminalreporter.write_sep(
+            "=", f"{n} check{'s' if n > 1 else ''} failed", red=True, bold=True,
+        )
+        terminalreporter.write_line("")

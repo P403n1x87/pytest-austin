@@ -29,6 +29,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/austin
           gcc -Wall -O3 -Os -s -pthread src/*.c -o src/austin
+          sudo setcap cap_sys_ptrace+ep src/austin
         if: startsWith(matrix.os, 'ubuntu')
 
       - name: Compile Austin on Windows
@@ -70,7 +71,7 @@ jobs:
       - name: Publish coverage metrics
         run: |
           cd $GITHUB_WORKSPACE/main
-          poetry run codecov
+          nox -rs coverage
         if: startsWith(matrix.os, 'ubuntu')
         env:
           CODECOV_TOKEN: ${{secrets.CODECOV_TOKEN}}

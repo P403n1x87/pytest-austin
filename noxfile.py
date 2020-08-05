@@ -49,15 +49,7 @@ def install_with_constraints(session, *args, **kwargs):
 def tests(session):
     session.run("poetry", "install", "-vv", external=True)
     session.run(
-        "sudo",
-        "-E",
-        "PATH=" + os.environ["PATH"],
-        "poetry",
-        "run",
-        "python",
-        "-m",
-        "pytest",
-        *PYTEST_OPTIONS,
+        "poetry", "run", "python", "-m", "pytest", *PYTEST_OPTIONS,
     )
 
 
