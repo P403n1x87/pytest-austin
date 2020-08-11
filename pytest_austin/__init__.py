@@ -1,14 +1,16 @@
 from datetime import timedelta as td
 from functools import lru_cache
-from io import StringIO
 import os
 from threading import Event
 from time import time
 from typing import Any, Dict, Iterator, List, Optional, TextIO
 
+from austin.format.pprof import PProf
+from austin.format.speedscope import Speedscope
 from austin.stats import AustinStats, Frame, FrameStats, InvalidSample, Sample
 from austin.threads import ThreadedAustin
 from psutil import Process
+import pytest_austin.markers as _markers
 
 
 Microseconds = int
@@ -57,6 +59,8 @@ class PyTestAustin(ThreadedAustin):
         self.austinfile = None
         self.tests = {}
         self.report = []
+        self.report_level = "minimal"
+        self.format = "austin"
 
     def on_ready(
         self, process: Process, child_process: Process, command_line: str
@@ -89,27 +93,45 @@ class PyTestAustin(ThreadedAustin):
         if not self.data:
             return
 
-        for sample in self.data:
-            try:
-                self.stats.update(Sample.parse(sample))
-            except InvalidSample:
-                pass
-
-        def _dump(stream: TextIO) -> None:
-            if self.mode != "-f":
-                buffer = StringIO()
-                self.stats.dump(buffer)
-                stream.write(buffer.getvalue().replace(" 0 0", ""))
+        def _dump(filename, stream, dumper):
+            if stream is None:
+                with open(
+                    filename, "wb" if filename.endswith("pprof") else "w"
+                ) as fout:
+                    dumper.dump(fout)
+                    self.austinfile = os.path.join(os.getcwd(), filename)
             else:
-                self.stats.dump(stream)
+                dumper.dump(stream)
 
-        if stream is None:
-            filename = f".austin_{int((time() * 1e6) % 1e14)}"
-            with open(filename, "w") as fout:
-                _dump(fout)
-                self.austinfile = os.path.join(os.getcwd(), filename)
-        else:
-            _dump(stream)
+        def _dump_austin():
+            _dump(f".austin_{int((time() * 1e6) % 1e14)}.aprof", stream, self.stats)
+
+        def _dump_pprof():
+            pprof = PProf()
+
+            for line in self.data:
+                try:
+                    pprof.add_sample(Sample.parse(line))
+                except InvalidSample:
+                    continue
+
+            _dump(f".austin_{int((time() * 1e6) % 1e14)}.pprof", stream, pprof)
+
+        def _dump_speedscope():
+            name = f"austin_{int((time() * 1e6) % 1e14)}"
+            speedscope = Speedscope(name)
+
+            for line in self.data:
+                try:
+                    speedscope.add_sample(Sample.parse(line))
+                except InvalidSample:
+                    continue
+
+            _dump(f".{name}.json", stream, speedscope)
+
+        {"austin": _dump_austin, "pprof": _dump_pprof, "speedscope": _dump_speedscope}[
+            self.format
+        ]()
 
     @lru_cache()
     def _index(self) -> Dict[str, Dict[str, FrameStats]]:
@@ -142,7 +164,23 @@ class PyTestAustin(ThreadedAustin):
         We pass the test item name and module together with any markers.
         """
         for marker in markers:
-            self.tests.setdefault(function, {}).setdefault(module, []).append(marker)
+            try:
+                marker_function = getattr(_markers, marker.name)
+            except AttributeError:
+                continue
+
+            arg_names = marker_function.__code__.co_varnames[
+                1 : marker_function.__code__.co_argcount
+            ]
+            defaults = marker_function.__defaults__ or []
+
+            marker_args = {a: v for a, v in zip(arg_names[-len(defaults) :], defaults)}
+            marker_args.update(marker.kwargs)
+            marker_args.update({k: v for k, v in zip(arg_names, marker.args)})
+
+            self.tests.setdefault(function, {}).setdefault(module, []).append(
+                marker_function((self, function, module), **marker_args)
+            )
 
     def _find_test(self, function: str, module: str) -> Optional[FrameStats]:
         # We expect to find at most one test
@@ -165,6 +203,16 @@ class PyTestAustin(ThreadedAustin):
         if self.is_running():
             raise RuntimeError("Austin is still running.")
 
+        if not self.data:
+            return
+
+        # Prepare stats
+        for sample in self.data:
+            try:
+                self.stats.update(Sample.parse(sample))
+            except InvalidSample:
+                pass
+
         for function, modules in self.tests.items():
             for module, markers in modules.items():
                 test_stats = self._find_test(function, module)
@@ -174,51 +222,26 @@ class PyTestAustin(ThreadedAustin):
                     continue
 
                 total_test_time = sum(fs.total.time for fs in test_stats)
+                total_test_malloc = sum(
+                    fs.total.time if self.mode == "-m" else fs.total.memory_alloc
+                    for fs in test_stats
+                )
+                total_test_dealloc = (
+                    sum(fs.total.memory_dealloc for fs in test_stats)
+                    if self.mode == "-f"
+                    else 0
+                )
 
                 for marker in markers:
-                    args = {"function": function, "module": module, "line": 0}
-                    args.update(marker.kwargs)
-                    args.update(
-                        {
-                            k: v
-                            for k, v in zip(
-                                ["time", "function", "module", "line"], marker.args
-                            )
-                        }
+                    outcome = marker(
+                        test_stats,
+                        total_test_time,
+                        total_test_malloc,
+                        total_test_dealloc,
                     )
+                    self.report.append((function, module, outcome))
 
-                    # find by function and module from index
-                    function_stats = []
-                    _find_from_hierarchy(
-                        function_stats,
-                        {s.label: s for s in test_stats},
-                        args["function"],
-                        args["module"],
-                    )
-
-                    if args["line"]:
-                        function_stats = [
-                            fs for fs in function_stats if fs.label.line == args["line"]
-                        ]
-
-                    function_total_time = sum(fs.total.time for fs in function_stats)
-
-                    expected_time = _parse_time(args["time"], total_test_time)
-                    outcome = function_total_time <= expected_time
-                    if not outcome:
-                        self.report.append(
-                            (
-                                function,
-                                module,
-                                args,
-                                total_test_time,
-                                function_total_time,
-                                expected_time,
-                                outcome,
-                            )
-                        )
-
-        return len(self.report)
+        return sum(1 for outcome in self.report if not outcome[2])
 
     def start(self) -> None:
         """Start Austin."""

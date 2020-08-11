@@ -65,6 +65,7 @@ jobs:
         run: |
           cd $env:GITHUB_WORKSPACE/main
           $env:PATH="$env:GITHUB_WORKSPACE/austin/src;$env:PATH"
+          $env:PYTHONIOENCODING="utf8"
           nox
         if: "startsWith(matrix.os, 'windows')"
 

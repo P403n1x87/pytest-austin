@@ -83,31 +83,34 @@ by a truncated timestamp, inside pytest rootdir. You can drop it onto
 tests.
 
 ~~~
-================================================= test session starts ==================================================
+================================================================ test session starts ================================================================
 platform linux -- Python 3.6.9, pytest-6.0.1, py-1.9.0, pluggy-0.13.1 -- /home/gabriele/.cache/pypoetry/virtualenvs/pytest-austin-yu27Ep_e-py3.6/bin/python3.6
 cachedir: .pytest_cache
-rootdir: /tmp/pytest-of-gabriele/pytest-87/test_hello0
+rootdir: /tmp/pytest-of-gabriele/pytest-226/test_austin_time_checks0
 plugins: cov-2.10.0, austin-0.1.0
 collecting ... collected 3 items
 
-test_hello.py::test_hello_default PASSED
-test_hello.py::test_hello_default_fails PASSED
-test_hello.py::test_hello_default_succeeds PASSED
+test_austin_time_checks.py::test_lines PASSED
+test_austin_time_checks.py::test_check_fails PASSED
+test_austin_time_checks.py::test_check_succeeds PASSED
 
-==================================================== Austin report =====================================================
+=================================================================== Austin report ===================================================================
 austin 2.0.0
-Collected stats written on /tmp/pytest-of-gabriele/pytest-87/test_hello0/.austin_96562836149361
+Collected stats written on /tmp/pytest-of-gabriele/pytest-226/test_austin_time_checks0/.austin_97148135487643.aprof
 
-🕑 Sampling time (min/avg/max) : 244/3275/20709 μs
-🐢 Long sampling rate : 89/89 (100.00 %) samples took longer than the sampling interval
-💀 Error rate : 0/89 (0.00 %) invalid samples
+🕑 Sampling time (min/avg/max) : 376/3327/18019 μs
+🐢 Long sampling rate : 87/87 (100.00 %) samples took longer than the sampling interval
+💀 Error rate : 0/87 (0.00 %) invalid samples
 
-test_hello.py::test_hello_default Function test_hello_default (test_hello.py) took 226 μs (1.0%) longer than expected (22425.48 μs)
-test_hello.py::test_hello_default_fails Function test_hello_default_fails (test_hello.py) took 117766 μs (11776.6%) longer than expected (1000.0 μs)
+test_austin_time_checks.py::test_lines test_lines:19 (test_austin_time_checks.py) -16.0 ms (-78.2% of 20.5 ms)
+test_austin_time_checks.py::test_lines test_lines:18 (test_austin_time_checks.py) -4.1 ms (-10.1% of 40.3 ms)
+test_austin_time_checks.py::test_lines fibonacci (test_austin_time_checks.py) -9.3 ms (-18.6% of 50.0 ms)
+test_austin_time_checks.py::test_check_fails test_check_fails (test_austin_time_checks.py) +99.8 ms (9978.6% of 1000.0 μs)
+test_austin_time_checks.py::test_check_succeeds test_check_succeeds (test_austin_time_checks.py) -9.0 ms (-8.1% of 110.0 ms)
 
-=================================================== 2 checks failed ====================================================
+================================================================== 1 check failed ===================================================================
 
-================================================== 3 passed in 0.36s ===================================================
+================================================================= 3 passed in 0.35s =================================================================
 ~~~
 
 
@@ -135,6 +138,9 @@ order to sample it every time you run pytest. If you want to prevent Austin from
 profiling your tests, you have to steal its mojo. You can do so with the
 `--steal-mojo` command line argument.
 
+
+## Time checks
+
 The plugin looks for the `total_time` marker on collected test items, which
 takes a mandatory argument `time` and three optional ones: `function`, `module`
 and `line`.
@@ -151,7 +157,7 @@ import pytest
 
 @pytest.mark.total_time(td(milliseconds=50))
 def test_hello_default():
-  ...
+    ...
 ~~~
 
 In some cases, you would want to make sure that a function or method called on a
@@ -164,9 +170,9 @@ import pytest
 
 @pytest.mark.total_time("5%", line=9)
 def test_hello_default():
-  somefunction()
-  fastfunction()  # <- this is line no. 7 in the test script
-  someotherfunction()
+    somefunction()
+    fastfunction()  # <- this is line no. 7 in the test script
+    someotherfunction()
 ~~~
 
 In many cases, however, one would want to test that a function or a method
@@ -183,11 +189,11 @@ import pytest
 
 @pytest.mark.total_time("50%", function="bar")
 def test_snafu():
-  ...
-  snafu = Snafu()
-  ...
-  snafu.foo()
-  ...
+    ...
+    snafu = Snafu()
+    ...
+    snafu.foo()
+    ...
 ~~~
 
 You can use the `module` argument to resolve function name clashes. For example,
@@ -201,17 +207,76 @@ import pytest
 
 @pytest.mark.total_time("50%", function="bar", module="somemodule.py")
 def test_snafu():
-  ...
-  snafu = Snafu()
-  ...
-  snafu.foo()
-  ...
+    ...
+    snafu = Snafu()
+    ...
+    snafu.foo()
+    ...
 ~~~
 
 And whilst you can also specify a line number, this is perhaps not very handy
 and practical outside of test scripts themselves, unless the content of the
 module is stable enough that line numbers don't need to be updated very
 frequently.
+
+## Memory checks
+
+One can perform memory allocation checks with the `total_memory` marker. The
+first argument is ``size``, which can be a percentage of the total memory
+allocation of the marked test case, as well as an absolute measure of the
+maximum amount of memory, e.g., ``"24 MB"``. The ``function``, ``module`` and
+``line`` are the same as for the ``total_time`` marker. The extra ``net``
+argument can be set to ``True`` to check for the total _net_ memory usage, that
+is the difference between memory allocations and deallocations.
+
+~~~ python
+import pytest
+
+
+@pytest.mark.total_memory("24 MB")
+def test_snafu():
+    allota_memory()
+~~~
+
+In order to perform memory checks, you need to specify either the ``memory`` or
+``all`` profile mode via the ``--profile-mode`` option.
+
+## Mixed checks
+
+When in the ``all`` profile mode, you can perform both time and memory checks by
+stacking ``total_time`` and ``total_memory`` markers.
+
+~~~ python
+import pytest
+
+
+@pytest.mark.total_time(5.15)
+@pytest.mark.total_memory("24 MB")
+def test_snafu():
+    allota_memory_and_time()
+~~~
+
+
+## Multi-processing
+
+If your tests spawn other Python processes, you can ask pytest-austin to profile
+them too with the ``--minime`` option. Note that if your tests are spawning too
+many non-Python processes, the sampling rate might be affected because of the
+way that Austin tries to discover Python child processes.
+
+## Reporting
+
+This plugins generate a report on terminal and dumps the collected profiling
+statistics on the file system as well, for later analysis and visualisation. The
+verbosity of the terminal report can be controlled with the ``--austin-report``
+option. By default, it is set to ``minimal``, which means that only checks that
+have failed will be reported. Use ``full`` to see the results for all the checks
+that have been detected and executed by the plugin.
+
+Regarding the dump of the profiling statistics, the generated file is in the
+Austin format by default (this is a generalisation of the collapsed stack
+format). If you want the plugin to dump the data in either the ``pprof`` or
+``speedscope`` format, you can set the ``--profile-format`` option accordingly.
 
 
 # Compatibility

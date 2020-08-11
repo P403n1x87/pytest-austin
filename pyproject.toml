@@ -46,14 +46,14 @@ classifiers = [
 cool_plugin = "pytest_austin.plugin"
 
 [tool.poetry.dependencies]
-python = ">=3.6"
+python = "^3.6"
 austin-python = {git = "https://github.com/P403n1x87/austin-python.git", branch = "devel"}
-# dataclasses = "*"
-# psutil = ">=5.7.0"
-# protobuf = "^3.12.2"
+dataclasses = "*"
+psutil = ">=5.7.0"
+ansimarkup = "^1.4.0"
 
 [tool.poetry.dev-dependencies]
-coverage = {extras = ["toml"], version = "*"}
+coverage = {extras = ["toml"], version = "5.2.1"}
 pytest = ">=5.4.2"
 pytest-cov = ">=2.8.1"
 nox = "^2020.5.24"

@@ -1,6 +1,7 @@
 from austin import AustinTerminated
 from pytest import Function, hookimpl, Module
 from pytest_austin import PyTestAustin
+import pytest_austin.markers as markers
 
 
 def pytest_addoption(parser, pluginmanager) -> None:
@@ -18,34 +19,62 @@ def pytest_addoption(parser, pluginmanager) -> None:
         "--profile-mode",
         choices=["time", "memory", "all"],
         default="time",
-        help="The profile mode. Defaults to 'time'.",
+        help="The profile mode. Defaults to 'time'",
     )
 
     group.addoption(
         "--sampling-interval",
         type=int,
         default=100,
-        help="Austin sampling interval in μs. Defaults to 100 μs.",
+        help="Austin sampling interval in μs. Defaults to 100 μs",
     )
 
     group.addoption(
         "--minime",
         action="store_true",
         default=False,
-        help="Profile any child processes too.",
+        help="Profile any child processes too",
+    )
+
+    group.addoption(
+        "--profile-format",
+        choices=["austin", "speedscope", "pprof"],
+        default="austin",
+        help="Output profiler data file format. Defaults to 'austin'",
+    )
+
+    group.addoption(
+        "--austin-report",
+        choices=["minimal", "full"],
+        default="minimal",
+        help="The verbosity of the Austin checks report. By default, only failed"
+        "checks are reported.",
     )
 
 
 def pytest_configure(config) -> None:
     """Configure pytest-austin."""
-    config.addinivalue_line(
-        "markers",
-        "total_time(time, function, module, line): check that the marked line "
-        "doesn't take more than the given time delta to execute. If no line is given, "
-        "then the whole function is considered.",
-    )
+    # Register all markers
+    for _ in dir(markers):
+        _ = getattr(markers, _)
+
+        if not callable(_):
+            continue
+
+        try:
+            args = _.__code__.co_varnames
+            if not args or args[0] != "mark":
+                continue
+        except AttributeError:
+            # We cannot get the argument names, so not a marker
+            continue
+
+        config.addinivalue_line(
+            "markers", f"{_.__name__}({', '.join(args[1:])}):{_.__doc__}"
+        )
 
     if config.option.steal_mojo:
+        # No mojo :(
         return
 
     # Required for when testing with pytester in-process
@@ -56,6 +85,8 @@ def pytest_configure(config) -> None:
 
     pytest_austin.interval = str(config.option.sampling_interval)
     pytest_austin.children = config.option.minime
+    pytest_austin.report_level = config.option.austin_report
+    pytest_austin.format = config.option.profile_format
 
     config.pluginmanager.register(pytest_austin, "austin")
 
@@ -80,7 +111,7 @@ def pytest_runtest_setup(item) -> None:
         if isinstance(item, Function) and isinstance(item.parent, Module):
             function, module = item.name, item.parent.name
             pytest_austin.register_test(
-                function, module, item.iter_markers("total_time")
+                function, module, item.iter_markers(),
             )
 
 
@@ -102,9 +133,9 @@ def pytest_runtestloop(session):
     except AustinTerminated:
         pass
 
-    pytest_austin.dump()
-
     session.testsfailed += pytest_austin.check_tests()
+
+    pytest_austin.dump()
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
@@ -132,17 +163,16 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
             )
 
     # Report failed Austin conditions
-    if pytest_austin.report:
-        n = len(pytest_austin.report)
+    checks = pytest_austin.report
+    failed_checks = [check for check in checks if not check[2]]
+    if pytest_austin.report_level == "minimal":
+        checks = failed_checks
 
-        for function, module, args, _, actual, expected, _ in pytest_austin.report:
-            delta = actual - expected
-            perc = delta * 100 / expected
-            message = (
-                f"{module}::{function} Function {args['function']} ({args['module']}) "
-                f"took {int(delta)} μs ({perc:.1f}%) longer than expected ({int(expected)} μs)"
-            )
-            terminalreporter.write_line(message)
+    if checks:
+        n = len(failed_checks)
+
+        for function, module, outcome in checks:
+            terminalreporter.write_line(f"{module}::{function} {outcome}")
 
         terminalreporter.write_line("")
         terminalreporter.write_sep(
