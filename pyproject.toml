@@ -30,16 +30,19 @@ authors = ["Gabriele N. Tornetta <phoenix1987@gmail.com>"]
 readme = "README.md"
 homepage = "https://github.com/P403n1x87/pytest-austin"
 repository = "https://github.com/P403n1x87/pytest-austin"
-documentation = "https://pytest-austin.readthedocs.io"
 keywords = ["performance", "profiling", "testing", "development"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Framework :: Pytest",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: GPLv3",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
   "Programming Language :: Python :: 3.6",
   "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+]
+packages = [
+  { include = "pytest_austin" },
 ]
 
 [tool.poetry.plugins.pytest11]
@@ -47,7 +50,7 @@ cool_plugin = "pytest_austin.plugin"
 
 [tool.poetry.dependencies]
 python = "^3.6"
-austin-python = {git = "https://github.com/P403n1x87/austin-python.git", branch = "devel"}
+austin-python = "^0.1.0"
 dataclasses = "*"
 psutil = ">=5.7.0"
 ansimarkup = "^1.4.0"

@@ -10,7 +10,7 @@ nox.options.sessions = ["lint", "tests"]
 # ---- Configuration ----
 
 
-SUPPORTED_PYTHON_VERSIONS = ["3.6", "3.7", "3.8"]
+SUPPORTED_PYTHON_VERSIONS = ["3.6", "3.7", "3.8", "3.9"]
 
 PYTEST_OPTIONS = [
     "-vvvs",

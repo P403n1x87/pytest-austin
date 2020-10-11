@@ -79,7 +79,7 @@ def test_hello_default():
 Any failed tests will be reported by pytest at the end of the session. All the
 collected statistics are written on a file prefixed with `austin_` and followed
 by a truncated timestamp, inside pytest rootdir. You can drop it onto
-[Speedscope](https://apeedscope.app) for a quick visual representation of your
+[Speedscope](https://speedscope.app) for a quick visual representation of your
 tests.
 
 ~~~
