@@ -219,6 +219,27 @@ and practical outside of test scripts themselves, unless the content of the
 module is stable enough that line numbers don't need to be updated very
 frequently.
 
+When the pluing runs, it will produce an output containing lines of the form
+
+~~~
+test_austin_time_checks.py::test_lines test_lines:19 (test_austin_time_checks.py) -16.0 ms (-78.2% of 20.5 ms)
+~~~
+
+In this case, a negative number, such as `-16.0 ms`, indicates that the total
+time spent on `test_lines:19 (test_austin_time_checks.py)` was 16.0 ms less
+than the total allowed time specified with the `total_time` marker, which in
+this example is 20.5 ms. Hence, negative numbers indicate a successful check.
+
+Failing tests will have a positive delta reported, e.g.
+
+~~~
+test_austin_time_checks.py::test_check_fails test_check_fails (test_austin_time_checks.py) +99.8 ms (9978.6% of 1000.0 μs)
+~~~
+
+This indicates that the total time spent on
+`test_check_fails (test_austin_time_checks.py)` was 99.8 ms more than the
+required threshold, which was set to 1 ms.
+
 ## Memory checks
 
 One can perform memory allocation checks with the `total_memory` marker. The
@@ -240,6 +261,11 @@ def test_snafu():
 
 In order to perform memory checks, you need to specify either the ``memory`` or
 ``all`` profile mode via the ``--profile-mode`` option.
+
+The negative and positive memory deltas reported by the plugin in the report
+behave like the time deltas described in the previous section. That is, a
+negative memory delta indicates a successful check, whereas a positive delta
+indicates a check that has failed.
 
 ## Mixed checks
 
