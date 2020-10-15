@@ -168,7 +168,7 @@ certain line in your test script executes in under a certain amount of time, say
 import pytest
 
 
-@pytest.mark.total_time("5%", line=9)
+@pytest.mark.total_time("5%", line=7)
 def test_hello_default():
     somefunction()
     fastfunction()  # <- this is line no. 7 in the test script
