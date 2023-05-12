@@ -204,7 +204,7 @@ class PyTestAustin(ThreadedAustin):
             raise RuntimeError("Austin is still running.")
 
         if not self.data:
-            return
+            return 0
 
         # Prepare stats
         for sample in self.data:
