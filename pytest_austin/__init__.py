@@ -1,17 +1,17 @@
+import os
 from datetime import timedelta as td
 from functools import lru_cache
-import os
 from threading import Event
 from time import time
 from typing import Any, Dict, Iterator, List, Optional, TextIO
 
 from austin.format.pprof import PProf
 from austin.format.speedscope import Speedscope
+from austin.simple import SimpleAustin
 from austin.stats import AustinStats, Frame, FrameStats, InvalidSample, Sample
-from austin.threads import ThreadedAustin
 from psutil import Process
-import pytest_austin.markers as _markers
 
+import pytest_austin.markers as _markers
 
 Microseconds = int
 
@@ -43,7 +43,7 @@ def _parse_time(timedelta: Any, total_test_time: Microseconds) -> Microseconds:
     raise ValueError(f"Invalid time delta type {type(timedelta)}")
 
 
-class PyTestAustin(ThreadedAustin):
+class PyTestAustin(SimpleAustin):
     """pytest implementation of Austin."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:

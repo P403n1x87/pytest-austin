@@ -1,7 +1,12 @@
-from austin import AustinTerminated
-from pytest import Function, hookimpl, Module
+from functools import partial
+
+import pytest
+from _pytest.runner import call_and_report
+from _pytest.runner import \
+    pytest_runtest_protocol as default_pytest_runtest_protocol
+
 from pytest_austin import PyTestAustin
-import pytest_austin.markers as markers
+from pytest_austin.marker import austin_marker_handler
 
 
 def pytest_addoption(parser, pluginmanager) -> None:
@@ -55,23 +60,12 @@ def pytest_addoption(parser, pluginmanager) -> None:
 def pytest_configure(config) -> None:
     """Configure pytest-austin."""
     # Register all markers
-    for _ in dir(markers):
-        _ = getattr(markers, _)
-
-        if not callable(_):
-            continue
-
-        try:
-            args = _.__code__.co_varnames
-            if not args or args[0] != "mark":
-                continue
-        except AttributeError:
-            # We cannot get the argument names, so not a marker
-            continue
-
-        config.addinivalue_line(
-            "markers", f"{_.__name__}({', '.join(args[1:])}):{_.__doc__}"
-        )
+    config.addinivalue_line(
+        "markers",
+        """austin(max_cpu, max_time, max_memory, function, file, line):
+            TODO
+        """,
+    )
 
     if config.option.steal_mojo:
         # No mojo :(
@@ -91,52 +85,45 @@ def pytest_configure(config) -> None:
     config.pluginmanager.register(pytest_austin, "austin")
 
 
-def pytest_sessionstart(session) -> None:
-    """Start Austin if we have mojo."""
-    pytest_austin = session.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item):
+    if item.get_closest_marker("skip"):
+        return default_pytest_runtest_protocol(item, None)
 
-    pytest_austin.start()
-    pytest_austin.wait_ready(1)
+    skipif = item.get_closest_marker("skipif")
+    if skipif and skipif.args[0]:
+        return default_pytest_runtest_protocol(item, None)
 
+    marker = item.get_closest_marker("austin")
+    if marker:
+        ihook = item.ihook
+        base_name = item.nodeid
 
-def pytest_runtest_setup(item) -> None:
-    """Register tests and checks with pytest-austin."""
-    pytest_austin = item.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
+        nodeid = base_name
 
-    if pytest_austin.is_running():
-        if isinstance(item, Function) and isinstance(item.parent, Module):
-            function, module = item.name, item.parent.name
-            pytest_austin.register_test(
-                function, module, item.iter_markers(),
-            )
+        # Start
+        ihook.pytest_runtest_logstart(nodeid=nodeid, location=item.location)
 
+        # Setup
+        report = call_and_report(item, "setup", log=False)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
 
-@hookimpl(hookwrapper=True)
-def pytest_runtestloop(session):
-    """Run all checks at the end and set the exit status."""
-    yield
+        # Call
+        item.runtest = partial(austin_marker_handler, item)
+        report = call_and_report(item, "call", log=False)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
 
-    # This runs effectively at the end of the session
-    pytest_austin = session.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
+        # Teardown
+        report = call_and_report(item, "teardown", log=False, nextitem=None)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
 
-    if pytest_austin.is_running():
-        pytest_austin.terminate(wait=True)
+        # Finish
+        ihook.pytest_runtest_logfinish(nodeid=nodeid, location=item.location)
 
-    try:
-        pytest_austin.join()
-    except AustinTerminated:
-        pass
-
-    session.testsfailed += pytest_austin.check_tests()
-
-    pytest_austin.dump()
-
+        return True
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     """Report Austin statistics if we had mojo."""
