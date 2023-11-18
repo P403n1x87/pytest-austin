@@ -36,27 +36,26 @@ classifiers = [
   "Framework :: Pytest",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
-  "Programming Language :: Python :: 3.6",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
 ]
-packages = [
-  { include = "pytest_austin" },
-]
+packages = [{ include = "pytest_austin" }]
 
 [tool.poetry.plugins.pytest11]
 cool_plugin = "pytest_austin.plugin"
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.8"
 austin-python = "^0.1.0"
 dataclasses = "*"
 psutil = ">=5.7.0"
 ansimarkup = "^1.4.0"
 
 [tool.poetry.dev-dependencies]
-coverage = {extras = ["toml"], version = "5.2.1"}
+coverage = { extras = ["toml"], version = "5.2.1" }
 pytest = ">=5.4.2"
 pytest-cov = ">=2.8.1"
 nox = "^2020.5.24"
