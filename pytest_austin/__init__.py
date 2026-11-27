@@ -209,7 +209,22 @@ class PyTestAustin(SimpleAustin):
                 test_stats = self._find_test(function, module)
                 if test_stats is None:
                     # The test was not found. Either there is no such test or
-                    # Austin did not collect any statistics for it.
+                    # Austin did not collect any statistics for it. We fail the
+                    # checks rather than passing them without any evidence.
+                    for _check in checks:
+                        self.report.append(
+                            (
+                                function,
+                                module,
+                                _markers.CheckOutcome(
+                                    mark=(function, module, 0),
+                                    actual=0,
+                                    expected=1,
+                                    units=_markers.Microseconds,
+                                    result=False,
+                                ),
+                            )
+                        )
                     continue
 
                 total_test_time = sum(fs.total for fs in test_stats)
