@@ -1,14 +1,20 @@
 import os
 from datetime import timedelta as td
-from functools import lru_cache
 from threading import Event
 from time import time
-from typing import Any, Dict, Iterator, List, Optional, TextIO
+from typing import Any, Callable, Dict, Iterator, List, Optional, TextIO, Tuple, Union
 
 from austin.format.pprof import PProf
 from austin.format.speedscope import Speedscope
 from austin.simple import SimpleAustin
-from austin.stats import AustinStats, Frame, FrameStats, InvalidSample, Sample
+from austin.stats import (
+    AustinStats,
+    AustinStatsType,
+    Frame,
+    FrameStats,
+    InvalidSample,
+    Sample,
+)
 from psutil import Process
 
 import pytest_austin.markers as _markers
@@ -29,16 +35,18 @@ def _find_from_hierarchy(
             _find_from_hierarchy(collector, stats.children, function, module)
 
 
-def _parse_time(timedelta: Any, total_test_time: Microseconds) -> Microseconds:
+def _parse_time(
+    timedelta: Union[td, str, float, int], total_test_time: Microseconds
+) -> Microseconds:
     if isinstance(timedelta, td):
-        return timedelta.total_seconds() * 1e6
+        return int(timedelta.total_seconds() * 1e6)
     if isinstance(timedelta, str):
         perc = timedelta.strip()
         if not perc[-1] == "%":
             raise ValueError("Invalid % total time")
-        return float(perc[:-1]) / 100 * total_test_time
+        return int(float(perc[:-1]) / 100 * total_test_time)
     if isinstance(timedelta, float) or isinstance(timedelta, int):
-        return timedelta
+        return int(timedelta)
 
     raise ValueError(f"Invalid time delta type {type(timedelta)}")
 
@@ -50,15 +58,17 @@ class PyTestAustin(SimpleAustin):
         super().__init__(*args, **kwargs)
 
         self.ready = Event()
-        self.stats = AustinStats()
+        self.stats = AustinStats(AustinStatsType.WALL)
         self.interval: str = "100"
         self.children = False
         self.mode: Optional[str] = None
         self.data: List[str] = []
         self.global_stats: Optional[str] = None
-        self.austinfile = None
-        self.tests = {}
-        self.report = []
+        self.austinfile: Optional[str] = None
+        self.tests: Dict[str, Dict[str, List[Callable[..., _markers.CheckOutcome]]]] = (
+            {}
+        )
+        self.report: List[Tuple[str, str, _markers.CheckOutcome]] = []
         self.report_level = "minimal"
         self.format = "austin"
 
@@ -79,7 +89,7 @@ class PyTestAustin(SimpleAustin):
         self.global_stats = stats
         self.ready.set()
 
-    def wait_ready(self, timeout: Optional[int] = None):
+    def wait_ready(self, timeout: Optional[int] = None) -> None:
         """Wait for Austin to enter the ready state."""
         self.ready.wait(timeout)
 
@@ -93,7 +103,7 @@ class PyTestAustin(SimpleAustin):
         if not self.data:
             return
 
-        def _dump(filename, stream, dumper):
+        def _dump(filename: str, stream: Optional[TextIO], dumper: Any) -> None:
             if stream is None:
                 with open(
                     filename, "wb" if filename.endswith("pprof") else "w"
@@ -103,10 +113,10 @@ class PyTestAustin(SimpleAustin):
             else:
                 dumper.dump(stream)
 
-        def _dump_austin():
+        def _dump_austin() -> None:
             _dump(f".austin_{int((time() * 1e6) % 1e14)}.aprof", stream, self.stats)
 
-        def _dump_pprof():
+        def _dump_pprof() -> None:
             pprof = PProf()
 
             for line in self.data:
@@ -117,7 +127,7 @@ class PyTestAustin(SimpleAustin):
 
             _dump(f".austin_{int((time() * 1e6) % 1e14)}.pprof", stream, pprof)
 
-        def _dump_speedscope():
+        def _dump_speedscope() -> None:
             name = f"austin_{int((time() * 1e6) % 1e14)}"
             speedscope = Speedscope(name)
 
@@ -133,7 +143,6 @@ class PyTestAustin(SimpleAustin):
             self.format
         ]()
 
-    @lru_cache()
     def _index(self) -> Dict[str, Dict[str, FrameStats]]:
         # TODO: This code can be optimised. If we collect all the test items we
         # can index up to the test functions. Then we keep indexing whenever
@@ -143,14 +152,14 @@ class PyTestAustin(SimpleAustin):
             stats: FrameStats, index: Dict[str, Dict[str, FrameStats]]
         ) -> None:
             """Build an index of all the functions in all the modules recursively."""
-            for frame, stats in stats.children.items():
+            for frame, child in stats.children.items():
                 index.setdefault(frame.function, {}).setdefault(
                     frame.filename, []
-                ).append(stats)
+                ).append(child)
 
-                _add_child_stats(stats, index)
+                _add_child_stats(child, index)
 
-        index = {}
+        index: Dict[str, Dict[str, FrameStats]] = {}
 
         for _, process in self.stats.processes.items():
             for _, thread in process.threads.items():
@@ -174,9 +183,14 @@ class PyTestAustin(SimpleAustin):
             ]
             defaults = marker_function.__defaults__ or []
 
-            marker_args = {a: v for a, v in zip(arg_names[-len(defaults) :], defaults)}
+            marker_args = {
+                a: v
+                for a, v in zip(arg_names[-len(defaults) :], defaults, strict=False)
+            }
             marker_args.update(marker.kwargs)
-            marker_args.update({k: v for k, v in zip(arg_names, marker.args)})
+            marker_args.update(
+                {k: v for k, v in zip(arg_names, marker.args, strict=False)}
+            )
 
             self.tests.setdefault(function, {}).setdefault(module, []).append(
                 marker_function((self, function, module), **marker_args)
@@ -207,6 +221,9 @@ class PyTestAustin(SimpleAustin):
             return 0
 
         # Prepare stats
+        self.stats.stats_type = (
+            AustinStatsType.MEMORY_ALLOC if self.mode == "-m" else AustinStatsType.WALL
+        )
         for sample in self.data:
             try:
                 self.stats.update(Sample.parse(sample))

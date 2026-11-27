@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import timedelta as td
-from typing import Any, Dict, List, NewType, Tuple, Type
+from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Type, Union
 
 from ansimarkup import parse
 from austin.stats import Frame, FrameStats
@@ -20,7 +20,7 @@ class CheckOutcome:
     result: bool
 
     @staticmethod
-    def _format_size(size):
+    def _format_size(size: float) -> str:
         if size > (1 << 30):
             return f"{size / (1 << 30):.1f} GB"
         if size > (1 << 20):
@@ -30,18 +30,18 @@ class CheckOutcome:
         return f"{size} B"
 
     @staticmethod
-    def _format_time(time):
+    def _format_time(time: float) -> str:
         if time > 1e6:
             return f"{time / 1e6:.1f} s"
         if time > 1e3:
             return f"{time / 1e3:.1f} ms"
         return f"{time:.1f} μs"
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         """Return the outcome result."""
         return self.result
 
-    def __str__(self):
+    def __str__(self) -> str:
         """Give a human readable description of the outcome."""
         delta = self.actual - self.expected
         perc = delta * 100 / self.expected
@@ -78,46 +78,54 @@ def _find_from_hierarchy(
             _find_from_hierarchy(collector, stats.children, function, module)
 
 
-def _parse_time(timedelta: Any, total_test_time: Microseconds) -> Microseconds:
+def _parse_time(
+    timedelta: Union[td, str, float, int], total_test_time: Microseconds
+) -> Microseconds:
     try:
         if isinstance(timedelta, td):
-            return timedelta.total_seconds() * 1e6
+            return Microseconds(int(timedelta.total_seconds() * 1e6))
         if isinstance(timedelta, str):
             perc = timedelta.strip()
             if not perc[-1] == "%":
                 raise ValueError("Invalid % total time")
-            return float(perc[:-1]) / 100 * total_test_time
+            return Microseconds(int(float(perc[:-1]) / 100 * total_test_time))
         if isinstance(timedelta, float) or isinstance(timedelta, int):
-            return timedelta
+            return Microseconds(int(timedelta))
     except ValueError:
         pass
 
     raise ValueError(f"Invalid time delta type {type(timedelta)}")
 
 
-def _parse_memory(size: Any, total_memory: Bytes) -> Bytes:
+def _parse_memory(size: Union[str, int], total_memory: Bytes) -> Bytes:
     try:
         if isinstance(size, str):
             _ = size.strip().upper()
             if _[-1] == "%":
-                return float(_[:-1]) / 100 * total_memory
+                return Bytes(int(float(_[:-1]) / 100 * total_memory))
             if _.endswith("GB"):
-                return int(_[:-2]) << 30
+                return Bytes(int(_[:-2]) << 30)
             if _.endswith("MB"):
-                return int(_[:-2]) << 20
+                return Bytes(int(_[:-2]) << 20)
             if _.endswith("KB"):
-                return int(_[:-2]) << 10
+                return Bytes(int(_[:-2]) << 10)
             if _.endswith("B"):
-                return int(_[:-2])
+                return Bytes(int(_[:-2]))
         if isinstance(size, int):
-            return size
+            return Bytes(size)
     except ValueError:
         pass
 
     raise ValueError(f"Invalid memory size format or type {type(size)}")
 
 
-def total_time(mark, time, function=None, module=None, line=0):
+def total_time(
+    mark: Tuple[Any, str, str],
+    time: Union[td, str, float, int],
+    function: Optional[str] = None,
+    module: Optional[str] = None,
+    line: int = 0,
+) -> Callable[..., CheckOutcome]:
     """
     Check that the marked line doesn't take more than the given time delta to
     execute. If no line is given, then the whole function is considered.
@@ -126,9 +134,14 @@ def total_time(mark, time, function=None, module=None, line=0):
     function = function or test_function
     module = module or test_module
 
-    def _(test_stats, total_test_time, total_test_malloc, total_test_dealloc):
+    def _check(
+        test_stats: List[FrameStats],
+        total_test_time: Microseconds,
+        total_test_malloc: Bytes,
+        total_test_dealloc: Bytes,
+    ) -> CheckOutcome:
         # find by function and module from index
-        function_stats = []
+        function_stats: List[FrameStats] = []
         _find_from_hierarchy(
             function_stats,
             {s.label: s for s in test_stats},
@@ -152,12 +165,19 @@ def total_time(mark, time, function=None, module=None, line=0):
             result=outcome,
         )
 
-    return _
+    return _check
 
 
-def total_memory(mark, size, function=None, module=None, line=0, net=False):
+def total_memory(
+    mark: Tuple[Any, str, str],
+    size: Union[str, int],
+    function: Optional[str] = None,
+    module: Optional[str] = None,
+    line: int = 0,
+    net: bool = False,
+) -> Callable[..., CheckOutcome]:
     """
-    Check that the marked line doesn't allocate more than the given memory to
+    Check that the marked line allocates more than the given memory to
     execute. If no line is given, then the whole function is considered. If net
     is set to ``True`` it will consider the net memory usage, that is the sum
     between memory allocations and deallocations.
@@ -166,9 +186,14 @@ def total_memory(mark, size, function=None, module=None, line=0, net=False):
     function = function or test_function
     module = module or test_module
 
-    def _(test_stats, total_test_time, total_test_malloc, total_test_dealloc):
+    def _check(
+        test_stats: List[FrameStats],
+        total_test_time: Microseconds,
+        total_test_malloc: Bytes,
+        total_test_dealloc: Bytes,
+    ) -> CheckOutcome:
         # find by function and module from index
-        function_stats = []
+        function_stats: List[FrameStats] = []
         _find_from_hierarchy(
             function_stats,
             {s.label: s for s in test_stats},
@@ -186,7 +211,9 @@ def total_memory(mark, size, function=None, module=None, line=0, net=False):
         function_total_dealloc = sum(fs.total.memory_dealloc for fs in function_stats)
 
         total_memory = (
-            total_test_malloc if not net else total_test_malloc + total_test_dealloc
+            total_test_malloc
+            if not net
+            else Bytes(total_test_malloc + total_test_dealloc)
         )
         function_memory = (
             function_total_alloc
@@ -204,4 +231,4 @@ def total_memory(mark, size, function=None, module=None, line=0, net=False):
             result=outcome,
         )
 
-    return _
+    return _check

@@ -1,4 +1,6 @@
+import argparse
 from functools import partial
+from typing import Optional
 
 import pytest
 from _pytest.runner import call_and_report
@@ -8,7 +10,9 @@ from pytest_austin import PyTestAustin
 from pytest_austin.marker import austin_marker_handler
 
 
-def pytest_addoption(parser, pluginmanager) -> None:
+def pytest_addoption(
+    parser: argparse.Namespace, pluginmanager: pytest.PytestPluginManager
+) -> None:
     """Add Austin command line options to pytest."""
     group = parser.getgroup("austin", "statistical profiling with Austin")
 
@@ -56,7 +60,7 @@ def pytest_addoption(parser, pluginmanager) -> None:
     )
 
 
-def pytest_configure(config) -> None:
+def pytest_configure(config: pytest.Config) -> None:
     """Configure pytest-austin."""
     # Register all markers
     config.addinivalue_line(
@@ -85,7 +89,8 @@ def pytest_configure(config) -> None:
 
 
 @pytest.hookimpl(tryfirst=True)
-def pytest_runtest_protocol(item):
+def pytest_runtest_protocol(item: pytest.Item) -> Optional[bool]:
+    """Run a single test through Austin, checking its outcome."""
     if item.get_closest_marker("skip"):
         return default_pytest_runtest_protocol(item, None)
 
@@ -124,8 +129,14 @@ def pytest_runtest_protocol(item):
 
         return True
 
+    return None
 
-def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter,
+    exitstatus: Optional[int],
+    config: pytest.Config,
+) -> None:
     """Report Austin statistics if we had mojo."""
     pytest_austin = config.pluginmanager.getplugin("austin")
     if not pytest_austin:
