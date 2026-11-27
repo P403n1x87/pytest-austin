@@ -1,10 +1,18 @@
-from austin import AustinTerminated
-from pytest import Function, hookimpl, Module
+import argparse
+from functools import partial
+from typing import Optional
+
+import pytest
+from _pytest.runner import call_and_report
+from _pytest.runner import pytest_runtest_protocol as default_pytest_runtest_protocol
+
 from pytest_austin import PyTestAustin
-import pytest_austin.markers as markers
+from pytest_austin.marker import austin_marker_handler
 
 
-def pytest_addoption(parser, pluginmanager) -> None:
+def pytest_addoption(
+    parser: argparse.Namespace, pluginmanager: pytest.PytestPluginManager
+) -> None:
     """Add Austin command line options to pytest."""
     group = parser.getgroup("austin", "statistical profiling with Austin")
 
@@ -26,7 +34,7 @@ def pytest_addoption(parser, pluginmanager) -> None:
         "--sampling-interval",
         type=int,
         default=100,
-        help="Austin sampling interval in μs. Defaults to 100 μs",
+        help="Austin sampling interval in us. Defaults to 100 us",
     )
 
     group.addoption(
@@ -52,26 +60,24 @@ def pytest_addoption(parser, pluginmanager) -> None:
     )
 
 
-def pytest_configure(config) -> None:
+def pytest_configure(config: pytest.Config) -> None:
     """Configure pytest-austin."""
     # Register all markers
-    for _ in dir(markers):
-        _ = getattr(markers, _)
-
-        if not callable(_):
-            continue
-
-        try:
-            args = _.__code__.co_varnames
-            if not args or args[0] != "mark":
-                continue
-        except AttributeError:
-            # We cannot get the argument names, so not a marker
-            continue
-
-        config.addinivalue_line(
-            "markers", f"{_.__name__}({', '.join(args[1:])}):{_.__doc__}"
-        )
+    config.addinivalue_line(
+        "markers",
+        """total_time(time, function, file, line):
+            Check that the marked function doesn't take more than the given
+            time to execute.
+        """,
+    )
+    config.addinivalue_line(
+        "markers",
+        """total_memory(size, function, file, line, net):
+            Check that the marked function allocates more memory than the
+            given size to execute. If ``net`` is set, the net memory usage is
+            considered.
+        """,
+    )
 
     if config.option.steal_mojo:
         # No mojo :(
@@ -91,54 +97,57 @@ def pytest_configure(config) -> None:
     config.pluginmanager.register(pytest_austin, "austin")
 
 
-def pytest_sessionstart(session) -> None:
-    """Start Austin if we have mojo."""
-    pytest_austin = session.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item: pytest.Item) -> Optional[bool]:
+    """Run a single test through Austin, checking its outcome."""
+    if item.get_closest_marker("skip"):
+        return default_pytest_runtest_protocol(item, None)
 
-    pytest_austin.start()
-    pytest_austin.wait_ready(1)
+    skipif = item.get_closest_marker("skipif")
+    if skipif and skipif.args[0]:
+        return default_pytest_runtest_protocol(item, None)
+
+    marker = item.get_closest_marker("total_time") or item.get_closest_marker(
+        "total_memory"
+    )
+    if marker:
+        ihook = item.ihook
+        base_name = item.nodeid
+
+        nodeid = base_name
+
+        # Start
+        ihook.pytest_runtest_logstart(nodeid=nodeid, location=item.location)
+
+        # Setup
+        report = call_and_report(item, "setup", log=False)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
+
+        # Call
+        item.runtest = partial(austin_marker_handler, item)
+        report = call_and_report(item, "call", log=False)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
+
+        # Teardown
+        report = call_and_report(item, "teardown", log=False, nextitem=None)
+        report.nodeid = nodeid
+        ihook.pytest_runtest_logreport(report=report)
+
+        # Finish
+        ihook.pytest_runtest_logfinish(nodeid=nodeid, location=item.location)
+
+        return True
+
+    return None
 
 
-def pytest_runtest_setup(item) -> None:
-    """Register tests and checks with pytest-austin."""
-    pytest_austin = item.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
-
-    if pytest_austin.is_running():
-        if isinstance(item, Function) and isinstance(item.parent, Module):
-            function, module = item.name, item.parent.name
-            pytest_austin.register_test(
-                function, module, item.iter_markers(),
-            )
-
-
-@hookimpl(hookwrapper=True)
-def pytest_runtestloop(session):
-    """Run all checks at the end and set the exit status."""
-    yield
-
-    # This runs effectively at the end of the session
-    pytest_austin = session.config.pluginmanager.getplugin("austin")
-    if not pytest_austin:
-        return
-
-    if pytest_austin.is_running():
-        pytest_austin.terminate(wait=True)
-
-    try:
-        pytest_austin.join()
-    except AustinTerminated:
-        pass
-
-    session.testsfailed += pytest_austin.check_tests()
-
-    pytest_austin.dump()
-
-
-def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
+def pytest_terminal_summary(
+    terminalreporter: pytest.TerminalReporter,
+    exitstatus: Optional[int],
+    config: pytest.Config,
+) -> None:
     """Report Austin statistics if we had mojo."""
     pytest_austin = config.pluginmanager.getplugin("austin")
     if not pytest_austin:
@@ -176,6 +185,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
 
         terminalreporter.write_line("")
         terminalreporter.write_sep(
-            "=", f"{n} check{'s' if n > 1 else ''} failed", red=True, bold=True,
+            "=",
+            f"{n} check{'s' if n > 1 else ''} failed",
+            red=True,
+            bold=True,
         )
         terminalreporter.write_line("")

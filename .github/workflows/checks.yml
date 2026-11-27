@@ -1,0 +1,38 @@
+name: Checks
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  typing:
+    runs-on: "ubuntu-latest"
+
+    name: Type checking
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - run: |
+          pip install hatch
+          hatch -e checks run typing
+
+  linting:
+    runs-on: "ubuntu-latest"
+
+    name: Linting
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - run: |
+          pip install hatch
+          hatch -e checks run linting

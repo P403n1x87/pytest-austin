@@ -1,22 +1,34 @@
 name: Tests
-on: push
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
-  tests:
-    runs-on: ${{ matrix.os }}
+  tests-linux:
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-    name: Tests on ${{ matrix.os }}
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    name: Tests with Python ${{ matrix.python-version }} on Linux
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           path: main
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
-          architecture: x64
+          python-version: ${{ matrix.python-version }}
 
       - name: Checkout Austin development branch
         uses: actions/checkout@master
@@ -25,54 +37,115 @@ jobs:
           ref: devel
           path: austin
 
-      - name: Compile Austin on Linux
+      - name: Compile Austin
         run: |
           cd $GITHUB_WORKSPACE/austin
           gcc -Wall -O3 -Os -s -pthread src/*.c -o src/austin
-          sudo setcap cap_sys_ptrace+ep src/austin
-        if: startsWith(matrix.os, 'ubuntu')
 
-      - name: Compile Austin on Windows
+      - name: Install dependencies
         run: |
-          cd $env:GITHUB_WORKSPACE/austin
-          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s
-        if: startsWith(matrix.os, 'windows')
+          sudo apt-get update -y
+          sudo apt-get install -y binutils binutils-common
+          addr2line -V
+          pip install hatch
 
-      - name: Compile Austin on macOS
-        run: |
-          cd $GITHUB_WORKSPACE/austin
-          gcc -Wall -O3 -Os src/*.c -o src/austin
-        if: startsWith(matrix.os, 'macos')
-
-      - run: pip install nox==2020.5.24
-      - run: pip install poetry==1.0.5
-
-      - name: Run nox on Linux
+      - name: Run tests
+        timeout-minutes: 10
         run: |
           cd $GITHUB_WORKSPACE/main
           export PATH="$GITHUB_WORKSPACE/austin/src:$PATH"
-          nox
-        if: "startsWith(matrix.os, 'ubuntu')"
-
-      - name: Run nox on macOS
-        run: |
-          cd $GITHUB_WORKSPACE/main
-          export PATH="$GITHUB_WORKSPACE/austin/src:$PATH"
-          sudo nox
-        if: startsWith(matrix.os, 'macos')
-
-      - name: Run nox on Windows
-        run: |
-          cd $env:GITHUB_WORKSPACE/main
-          $env:PATH="$env:GITHUB_WORKSPACE/austin/src;$env:PATH"
-          $env:PYTHONIOENCODING="utf8"
-          nox
-        if: "startsWith(matrix.os, 'windows')"
+          hatch -e "tests.py${{ matrix.python-version }}" run tests -svv
 
       - name: Publish coverage metrics
         run: |
           cd $GITHUB_WORKSPACE/main
-          nox -rs coverage
-        if: startsWith(matrix.os, 'ubuntu')
+          hatch -e coverage run cov
+          hatch -e coverage run codecov
+        if: matrix.python-version == '3.14'
         env:
           CODECOV_TOKEN: ${{secrets.CODECOV_TOKEN}}
+
+  tests-macos:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    name: Tests with Python ${{ matrix.python-version }} on MacOS
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Checkout Austin development branch
+        uses: actions/checkout@master
+        with:
+          repository: P403n1x87/austin
+          ref: devel
+          path: austin
+
+      - name: Compile Austin
+        run: |
+          cd $GITHUB_WORKSPACE/austin
+          gcc -Wall -O3 -Os src/*.c -o src/austin
+
+      - name: Remove signature from the Python binary
+        run: |
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
+
+      - name: Install dependencies
+        run: |
+          pip install hatch
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: |
+          cd $GITHUB_WORKSPACE/main
+          export PATH="$GITHUB_WORKSPACE/austin/src:$PATH"
+          sudo hatch -e "tests.py${{ matrix.python-version }}" run tests -svv
+
+  tests-win:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    name: Tests with Python ${{ matrix.python-version }} on Windows
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Checkout Austin development branch
+        uses: actions/checkout@master
+        with:
+          repository: P403n1x87/austin
+          ref: devel
+          path: austin
+
+      - name: Compile Austin on Windows
+        run: |
+          cd $env:GITHUB_WORKSPACE/austin
+          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Os -s
+
+      - name: Install dependencies
+        run: |
+          pip install hatch
+
+      - name: Run tests
+        timeout-minutes: 10
+        run: |
+          cd $env:GITHUB_WORKSPACE/main
+          $env:PATH="$env:GITHUB_WORKSPACE\austin\src;$env:PATH"
+          hatch -e "tests.py${{ matrix.python-version }}" run tests -svv
