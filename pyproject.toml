@@ -76,14 +76,13 @@ python = ["3.11", "3.12", "3.13", "3.14"]
 python = "3.11"
 template = "checks"
 dependencies = [
-  "mypy~=0.770",
-  "flake8~=5.0.4",
-  "flake8-annotations~=2.9.1",
+  "mypy>=1.11",
+  "flake8>=7.1",
+  "flake8-annotations>=8.0",
   "flake8-black",
-  "flake8-bugbear~=22.9.23",
-  "flake8-docstrings~=1.6.0",
-  "flake8-import-order~=0.18.1",
-  "flake8-isort~=5.0.0",
+  "flake8-bugbear>=24.4",
+  "flake8-docstrings>=1.7",
+  "flake8-isort>=7.0",
 ]
 
 [tool.hatch.envs.checks.scripts]
@@ -120,10 +119,8 @@ source = ["pytest_austin"]
 [tool.coverage.report]
 show_missing = true
 
-[tool.ruff.lint.isort]
-force-single-line = true
-lines-after-imports = 2
-force-sort-within-sections = true
+[tool.isort]
+profile = "black"
 
 [tool.mypy]
 ignore_missing_imports = true
