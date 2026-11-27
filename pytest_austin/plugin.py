@@ -34,7 +34,7 @@ def pytest_addoption(
         "--sampling-interval",
         type=int,
         default=100,
-        help="Austin sampling interval in μs. Defaults to 100 μs",
+        help="Austin sampling interval in us. Defaults to 100 us",
     )
 
     group.addoption(

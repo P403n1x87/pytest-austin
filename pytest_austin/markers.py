@@ -36,7 +36,7 @@ class CheckOutcome:
             return f"{time / 1e6:.1f} s"
         if time > 1e3:
             return f"{time / 1e3:.1f} ms"
-        return f"{time:.1f} μs"
+        return f"{time:.1f}us"
 
     def __bool__(self) -> bool:
         """Return the outcome result."""
