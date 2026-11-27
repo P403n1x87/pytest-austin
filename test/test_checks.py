@@ -1,8 +1,9 @@
 from types import SimpleNamespace
 
-from austin.events import AustinFrame
+from austin.events import AustinFrame, AustinMetrics, AustinSample
 from austin.stats import FrameStats
 
+from pytest_austin import PyTestAustin
 from pytest_austin.markers import (
     Bytes,
     CheckOutcome,
@@ -69,3 +70,33 @@ def test_total_memory_check_fails() -> None:
         [_frame("test_lines", "mod.py", 0, 30 * 1024 * 1024)], 0, 30 * 1024 * 1024, 0
     )
     assert not outcome
+
+
+def _sample(function: str, filename: str, line: int, time: int) -> AustinSample:
+    return AustinSample(
+        pid=1,
+        iid=0,
+        thread="MainThread",
+        metrics=AustinMetrics(time=time),
+        frames=(AustinFrame(filename=filename, function=function, line=line),),
+    )
+
+
+def test_check_tests_fails_when_no_stats_found() -> None:
+    austin = PyTestAustin()
+    austin.register_test(
+        "missing_function",
+        "mod.py",
+        [
+            SimpleNamespace(
+                name="total_time",
+                args=("50%",),
+                kwargs={"function": "missing_function"},
+            )
+        ],
+    )
+    austin.data = [_sample("other_function", "mod.py", 1, 1_000)]
+
+    assert austin.check_tests() > 0
+    assert len(austin.report) > 0
+    assert not austin.report[0][2]
