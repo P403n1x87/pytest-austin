@@ -2,8 +2,7 @@ from functools import partial
 
 import pytest
 from _pytest.runner import call_and_report
-from _pytest.runner import \
-    pytest_runtest_protocol as default_pytest_runtest_protocol
+from _pytest.runner import pytest_runtest_protocol as default_pytest_runtest_protocol
 
 from pytest_austin import PyTestAustin
 from pytest_austin.marker import austin_marker_handler
@@ -125,6 +124,7 @@ def pytest_runtest_protocol(item):
 
         return True
 
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     """Report Austin statistics if we had mojo."""
     pytest_austin = config.pluginmanager.getplugin("austin")
@@ -163,6 +163,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
 
         terminalreporter.write_line("")
         terminalreporter.write_sep(
-            "=", f"{n} check{'s' if n > 1 else ''} failed", red=True, bold=True,
+            "=",
+            f"{n} check{'s' if n > 1 else ''} failed",
+            red=True,
+            bold=True,
         )
         terminalreporter.write_line("")

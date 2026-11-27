@@ -20,9 +20,9 @@
     <img src="https://github.com/P403n1x87/pytest-austin/workflows/Tests/badge.svg"
          alt="GitHub Actions: Tests">
   </a>
-  <a href="https://travis-ci.com/P403n1x87/pytest-austin">
-    <img src="https://travis-ci.com/P403n1x87/pytest-austin.svg?token=fzW2yzQyjwys4tWf9anS"
-         alt="Travis CI">
+  <a href="https://github.com/P403n1x87/pytest-austin/actions?workflow=Checks">
+    <img src="https://github.com/P403n1x87/pytest-austin/workflows/Checks/badge.svg"
+         alt="GitHub Actions: Checks">
   </a>
   <a href="https://codecov.io/gh/P403n1x87/pytest-austin">
     <img src="https://codecov.io/gh/P403n1x87/pytest-austin/branch/master/graph/badge.svg"
@@ -84,7 +84,7 @@ tests.
 
 ~~~
 ================================================================ test session starts ================================================================
-platform linux -- Python 3.6.9, pytest-6.0.1, py-1.9.0, pluggy-0.13.1 -- /home/gabriele/.cache/pypoetry/virtualenvs/pytest-austin-yu27Ep_e-py3.6/bin/python3.6
+platform linux -- Python 3.12.3, pytest-8.3.3, pluggy-1.3.0 -- /home/gabriele/.local/share/hatch/env/virtual/tests-py3.12/bin/python
 cachedir: .pytest_cache
 rootdir: /tmp/pytest-of-gabriele/pytest-226/test_austin_time_checks0
 plugins: cov-2.10.0, austin-0.1.0

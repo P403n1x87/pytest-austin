@@ -5,7 +5,6 @@ from typing import Any, Dict, List, NewType, Tuple, Type
 from ansimarkup import parse
 from austin.stats import Frame, FrameStats
 
-
 Microseconds = NewType("Microseconds", int)
 Bytes = NewType("Bytes", int)
 
@@ -131,7 +130,10 @@ def total_time(mark, time, function=None, module=None, line=0):
         # find by function and module from index
         function_stats = []
         _find_from_hierarchy(
-            function_stats, {s.label: s for s in test_stats}, function, module,
+            function_stats,
+            {s.label: s for s in test_stats},
+            function,
+            module,
         )
 
         if line:
@@ -168,7 +170,10 @@ def total_memory(mark, size, function=None, module=None, line=0, net=False):
         # find by function and module from index
         function_stats = []
         _find_from_hierarchy(
-            function_stats, {s.label: s for s in test_stats}, function, module,
+            function_stats,
+            {s.label: s for s in test_stats},
+            function,
+            module,
         )
 
         if line:

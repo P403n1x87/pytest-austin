@@ -6,4 +6,3 @@ docstring-convention = google
 import-order-style = google
 per-file-ignores =
   test/*:ANN,D
-  noxfile.py:ANN,D

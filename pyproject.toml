@@ -11,58 +11,107 @@
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
+# the Free Software Foundation; either version 3 of the License, or
 # (at your option) any later version.
 #
 # This program is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
+# GNU General for more details.
+#
 # You should have received a copy of the GNU General Public License
-# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# along with this program; if not, write to the Free Software Foundation,
+# either version 3 of the License, or (at your option) any later version.
 
-[tool.poetry]
+[project]
 name = "pytest-austin"
-version = "0.1.0"
 description = "Austin plugin for pytest"
+authors = [
+  {name = "Gabriele N. Tornetta", email = "phoenix1987@gmail.com"},
+]
 license = "GPL-3.0-or-later"
-authors = ["Gabriele N. Tornetta <phoenix1987@gmail.com>"]
 readme = "README.md"
-homepage = "https://github.com/P403n1x87/pytest-austin"
-repository = "https://github.com/P403n1x87/pytest-austin"
+
 keywords = ["performance", "profiling", "testing", "development"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Framework :: Pytest",
   "Intended Audience :: Developers",
-  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
-packages = [{ include = "pytest_austin" }]
 
-[tool.poetry.plugins.pytest11]
+requires-python = ">=3.11"
+dependencies = [
+  "austin-python>=0.1.0,<2.0.0",
+  "ansimarkup>=1.4.0,<2.0.0",
+  "psutil>=5.7.0",
+]
+
+dynamic = ["version"]
+
+[project.urls]
+homepage = "https://github.com/P403n1x87/pytest-austin"
+repository = "https://github.com/P403n1x87/pytest-austin"
+issues = "https://github.com/P403n1x87/pytest-austin/issues"
+
+[project.entry-points.pytest11]
 cool_plugin = "pytest_austin.plugin"
 
-[tool.poetry.dependencies]
-python = "^3.8"
-austin-python = "^0.1.0"
-dataclasses = "*"
-psutil = ">=5.7.0"
-ansimarkup = "^1.4.0"
+[tool.hatch.envs.tests]
+template = "tests"
+dependencies = [
+  "pytest>=5.4.2",
+  "pytest-cov>=2.8.1",
+]
+[tool.hatch.envs.tests.scripts]
+tests = "pytest --cov=pytest_austin --cov-report=term-missing --cov-report=xml {args}"
 
-[tool.poetry.dev-dependencies]
-coverage = { extras = ["toml"], version = "5.2.1" }
-pytest = ">=5.4.2"
-pytest-cov = ">=2.8.1"
-nox = "^2020.5.24"
-codecov = "^2.1.3"
+[[tool.hatch.envs.tests.matrix]]
+python = ["3.11", "3.12", "3.13", "3.14"]
 
-[tool.poetry.urls]
-issues = "https://github.com/P403n1x87/pytest-austin/issues"
+[tool.hatch.envs.checks]
+python = "3.11"
+template = "checks"
+dependencies = [
+  "mypy~=0.770",
+  "flake8~=5.0.4",
+  "flake8-annotations~=2.9.1",
+  "flake8-black",
+  "flake8-bugbear~=22.9.23",
+  "flake8-docstrings~=1.6.0",
+  "flake8-import-order~=0.18.1",
+  "flake8-isort~=5.0.0",
+]
+
+[tool.hatch.envs.checks.scripts]
+typing = "mypy --show-error-codes --install-types --non-interactive {args} pytest_austin/ test/"
+linting = "flake8 {args} pytest_austin/ test/"
+
+[tool.hatch.envs.coverage]
+python = "3.11"
+template = "coverage"
+dependencies = [
+  "coverage[toml]",
+  "codecov",
+]
+
+[tool.hatch.envs.coverage.scripts]
+cov = "coverage xml --fail-under=50"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.sdist]
+exclude = [
+  "/.github",
+  "/docs",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pytest_austin"]
 
 [tool.coverage.run]
 branch = true
@@ -71,6 +120,14 @@ source = ["pytest_austin"]
 [tool.coverage.report]
 show_missing = true
 
+[tool.ruff.lint.isort]
+force-single-line = true
+lines-after-imports = 2
+force-sort-within-sections = true
+
+[tool.mypy]
+ignore_missing_imports = true
+
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"

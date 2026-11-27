@@ -12,8 +12,7 @@ def test_austin_time_checks(testdir):
     """Test Austin time checks."""
 
     # create a temporary pytest test file
-    testdir.makepyfile(dedent(
-        """
+    testdir.makepyfile(dedent("""
         import pytest
 
         def fibonacci(n):
@@ -25,8 +24,7 @@ def test_austin_time_checks(testdir):
         def test_lines():
             fibonacci(27)
             fibonacci(25)
-    """)
-    )
+    """))
 
     result = testdir.runpytest("-vs", "--austin-report", "full")
 
