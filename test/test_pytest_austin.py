@@ -20,7 +20,7 @@ def test_austin_time_checks(testdir):
                 return 1
             return fibonacci(n-1) + fibonacci(n-2)
 
-        @pytest.mark.austin("50.3141592653 %", line=19)
+        @pytest.mark.total_time("50.3141592653 %", function="fibonacci")
         def test_lines():
             fibonacci(27)
             fibonacci(25)

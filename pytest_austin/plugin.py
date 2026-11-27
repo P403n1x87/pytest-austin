@@ -65,8 +65,17 @@ def pytest_configure(config: pytest.Config) -> None:
     # Register all markers
     config.addinivalue_line(
         "markers",
-        """austin(max_cpu, max_time, max_memory, function, file, line):
-            TODO
+        """total_time(time, function, file, line):
+            Check that the marked function doesn't take more than the given
+            time to execute.
+        """,
+    )
+    config.addinivalue_line(
+        "markers",
+        """total_memory(size, function, file, line, net):
+            Check that the marked function allocates more memory than the
+            given size to execute. If ``net`` is set, the net memory usage is
+            considered.
         """,
     )
 
@@ -98,7 +107,9 @@ def pytest_runtest_protocol(item: pytest.Item) -> Optional[bool]:
     if skipif and skipif.args[0]:
         return default_pytest_runtest_protocol(item, None)
 
-    marker = item.get_closest_marker("austin")
+    marker = item.get_closest_marker("total_time") or item.get_closest_marker(
+        "total_memory"
+    )
     if marker:
         ihook = item.ihook
         base_name = item.nodeid

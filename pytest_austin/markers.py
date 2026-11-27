@@ -3,7 +3,8 @@ from datetime import timedelta as td
 from typing import Any, Callable, Dict, List, NewType, Optional, Tuple, Type, Union
 
 from ansimarkup import parse
-from austin.stats import Frame, FrameStats
+from austin.events import AustinFrame
+from austin.stats import FrameStats
 
 Microseconds = NewType("Microseconds", int)
 Bytes = NewType("Bytes", int)
@@ -67,7 +68,7 @@ class CheckOutcome:
 
 def _find_from_hierarchy(
     collector: List[FrameStats],
-    stats_list: Dict[Frame, FrameStats],
+    stats_list: Dict[AustinFrame, FrameStats],
     function: str,
     module: str,
 ) -> None:
@@ -152,7 +153,7 @@ def total_time(
         if line:
             function_stats = [fs for fs in function_stats if fs.label.line == line]
 
-        function_total_time = sum(fs.total.time for fs in function_stats)
+        function_total_time = sum(fs.total for fs in function_stats)
 
         expected_time = _parse_time(time, total_test_time)
         outcome = function_total_time <= expected_time
@@ -204,11 +205,10 @@ def total_memory(
         if line:
             function_stats = [fs for fs in function_stats if fs.label.line == line]
 
-        function_total_alloc = sum(
-            fs.total.time if pytest_austin.mode == "-m" else fs.total.memory_alloc
-            for fs in function_stats
+        function_total_alloc = sum(fs.total for fs in function_stats)
+        function_total_dealloc = (
+            sum(fs.total for fs in function_stats) if pytest_austin.mode == "-f" else 0
         )
-        function_total_dealloc = sum(fs.total.memory_dealloc for fs in function_stats)
 
         total_memory = (
             total_test_malloc
